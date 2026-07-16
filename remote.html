@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Remote</title>
+<style type="text/css">
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #000000;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  #wrap {
+    padding: 24px 20px;
+  }
+  h1 {
+    font-size: 30px;
+    margin: 0 0 4px 0;
+    border-bottom: 2px solid #000000;
+    padding-bottom: 10px;
+  }
+  #status {
+    font-size: 16px;
+    color: #444444;
+    margin-bottom: 18px;
+  }
+  .section-title {
+    font-size: 22px;
+    margin: 22px 0 10px 0;
+  }
+  .nav-link {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  /* Compact icon tiles - inline-block grid (no flexbox/grid, so it
+     works on very old WebKit). 3 tiles per row. */
+  .tile {
+    display: inline-block;
+    width: 31%;
+    box-sizing: border-box;
+    border: 3px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    font-family: Georgia, "Times New Roman", serif;
+    text-align: center;
+    vertical-align: top;
+    padding: 14px 4px 10px 4px;
+    margin: 0 3.5% 14px 0;
+  }
+  .tile:nth-child(3n) {
+    margin-right: 0;
+  }
+  .tile .icon {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 8px auto;
+  }
+  .tile .icon svg {
+    display: block;
+    width: 40px;
+    height: 40px;
+  }
+  .tile .label {
+    display: block;
+    font-size: 16px;
+    line-height: 1.15;
+  }
+  .tile.pressed {
+    background: #000000;
+    color: #ffffff;
+  }
+  /* D-pad tiles are square-ish and slightly bigger since there's
+     no label/state text underneath, just an arrow icon. */
+  .dpad-tile {
+    display: inline-block;
+    width: 31%;
+    box-sizing: border-box;
+    height: 70px;
+    line-height: 70px;
+    border: 3px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    text-align: center;
+    vertical-align: top;
+    margin: 0 3.5% 14px 0;
+  }
+  .dpad-tile:nth-child(3n) {
+    margin-right: 0;
+  }
+  .dpad-tile.pressed {
+    background: #000000;
+    color: #ffffff;
+  }
+  .dpad-tile.blank {
+    border-color: #ffffff;
+    visibility: hidden;
+  }
+  .dpad-tile .icon {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+  }
+  .dpad-tile .icon svg {
+    display: block;
+    width: 28px;
+    height: 28px;
+    margin: 0 auto;
+  }
+  .back-btn {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    border: 2px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    font-size: 20px;
+    padding: 14px;
+    margin-top: 10px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Remote</h1>
+  <div id="status">Ready</div>
+  <a class="nav-link" href="kindle-dashboard.html">&#8592; Home</a>
+  <div class="section-title">Apps</div>
+  <div id="group-apps"></div>
+  <div class="section-title">Navigate</div>
+  <div id="group-dpad"></div>
+  <button class="back-btn" onclick="pressButton('back')">Back</button>
+</div>
+<script type="text/javascript">
+  /* ============================================================
+     CONFIG - edit these for your setup
+     ============================================================ */
+  var HA_TOKEN = "Add Long-lived access token HERE";
+  var HA_URL = ""; // same rule as the home page - leave blank if hosted in /config/www
+  // ------------------------------------------------------------
+  // The TV is controlled through Home Assistant scripts (each one
+  // fires a learned IR/RF command). Every button below just calls
+  // "script.turn_on" against its script entity - that's the generic
+  // service every HA script supports, so we don't need to know each
+  // script's individual service name.
+  // ------------------------------------------------------------
+  var BUTTONS = {
+    power:   { label: "Power", icon: "power", service: "script.turn_on",
+      data: { entity_id: "script.tv_netflix" } },
+    netflix: { label: "Netflix", icon: "play", service: "script.turn_on",
+      data: { entity_id: "script.tv_netflix_2" } },
+    prime:   { label: "Prime Video", icon: "play", service: "script.turn_on",
+      data: { entity_id: "script.tv_prime" } },
+    hdmi:    { label: "HDMI", icon: "hdmi", service: "script.turn_on",
+      data: { entity_id: "script.tv_hdmi" } },
+    up:      { icon: "up", service: "script.turn_on", data: { entity_id: "script.tv_up" } },
+    down:    { icon: "down", service: "script.turn_on", data: { entity_id: "script.tv_down" } },
+    left:    { icon: "left", service: "script.turn_on", data: { entity_id: "script.tv_left" } },
+    right:   { icon: "right", service: "script.turn_on", data: { entity_id: "script.tv_right" } },
+    enter:   { icon: "enter", service: "script.turn_on", data: { entity_id: "script.tv_enter" } },
+    back:    { service: "script.turn_on", data: { entity_id: "script.tv_back" } }
+  };
+  /* ============================================================
+     Icons - plain-stroke SVGs, no external assets, e-ink friendly
+     ============================================================ */
+  var ICONS = {
+    play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<polygon points="6 3 20 12 6 21 6 3"/></svg>',
+    hdmi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M6 9V6h12v3l2 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3z"/>' +
+          '<line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>',
+    power: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+           '<line x1="12" y1="2" x2="12" y2="12"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg>',
+    up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>',
+    down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>',
+    left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 5 5 12 12 19"/></svg>',
+    right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+           '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+    enter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+           '<circle cx="12" cy="12" r="8"/></svg>'
+  };
+  /* ============================================================
+     Layout - which buttons appear in each group, and in what order.
+     The dpad uses "blank" placeholders so the arrows land in a
+     proper cross shape within the 3-per-row inline-block grid.
+     ============================================================ */
+  var APP_BUTTONS = ["power", "netflix", "prime", "hdmi"];
+  var DPAD_LAYOUT = ["blank", "up", "blank", "left", "enter", "right", "blank", "down", "blank"];
+  /* ============================================================
+     No need to edit below this line
+     ============================================================ */
+  function apiRequest(method, path, body, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, HA_URL + path, true);
+    xhr.setRequestHeader("Authorization", "Bearer " + HA_TOKEN);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4) {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          callback(true);
+        } else {
+          callback(false);
+        }
+      }
+    };
+    xhr.send(body ? JSON.stringify(body) : null);
+  }
+  function renderApps(containerId, keys) {
+    var container = document.getElementById(containerId);
+    container.innerHTML = "";
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var def = BUTTONS[key];
+      var btn = document.createElement("button");
+      btn.className = "tile";
+      btn.id = "btn-" + key;
+      var iconSpan = document.createElement("span");
+      iconSpan.className = "icon";
+      iconSpan.innerHTML = ICONS[def.icon] || ICONS["enter"];
+      btn.appendChild(iconSpan);
+      var labelSpan = document.createElement("span");
+      labelSpan.className = "label";
+      labelSpan.appendChild(document.createTextNode(def.label));
+      btn.appendChild(labelSpan);
+      btn.onclick = (function (k) { return function () { pressButton(k); }; })(key);
+      container.appendChild(btn);
+    }
+  }
+  function renderDpad(containerId, keys) {
+    var container = document.getElementById(containerId);
+    container.innerHTML = "";
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var btn = document.createElement("button");
+      if (key === "blank") {
+        btn.className = "dpad-tile blank";
+        btn.disabled = true;
+      } else {
+        var def = BUTTONS[key];
+        btn.className = "dpad-tile";
+        btn.id = "btn-" + key;
+        btn.innerHTML = '<span class="icon">' + (ICONS[def.icon] || "") + '</span>';
+        btn.onclick = (function (k) { return function () { pressButton(k); }; })(key);
+      }
+      container.appendChild(btn);
+    }
+  }
+  function pressButton(key) {
+    var def = BUTTONS[key];
+    if (!def) return;
+    var btn = document.getElementById("btn-" + key);
+    var statusEl = document.getElementById("status");
+    if (btn) {
+      btn.className += " pressed";
+      setTimeout(function () { btn.className = btn.className.replace(" pressed", ""); }, 200);
+    }
+    statusEl.innerHTML = "Sending&#8230;";
+    var parts = def.service.split(".");
+    var domain = parts[0];
+    var service = parts[1];
+    apiRequest("POST", "/api/services/" + domain + "/" + service, def.data, function (ok) {
+      statusEl.innerHTML = ok ? "Sent: " + key : "Failed: " + key + " (check entity IDs in the config section)";
+    });
+  }
+  function init() {
+    renderApps("group-apps", APP_BUTTONS);
+    renderDpad("group-dpad", DPAD_LAYOUT);
+  }
+  init();
+</script>
+</body>
+</html>
