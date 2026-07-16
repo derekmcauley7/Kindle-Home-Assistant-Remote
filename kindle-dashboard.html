@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Home</title>
+<style type="text/css">
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #000000;
+    font-family: Georgia, "Times New Roman", serif;
+  }
+  #wrap {
+    padding: 24px 20px;
+  }
+  h1 {
+    font-size: 30px;
+    margin: 0 0 4px 0;
+    border-bottom: 2px solid #000000;
+    padding-bottom: 10px;
+  }
+  #status {
+    font-size: 16px;
+    color: #444444;
+    margin-bottom: 18px;
+  }
+  .section-title {
+    font-size: 22px;
+    margin: 22px 0 10px 0;
+  }
+  /* Compact icon tiles - inline-block grid (no flexbox/grid, so it
+     works on very old WebKit). 3 tiles per row. */
+  .tile {
+    display: inline-block;
+    width: 31%;
+    box-sizing: border-box;
+    border: 3px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    font-family: Georgia, "Times New Roman", serif;
+    text-align: center;
+    vertical-align: top;
+    padding: 14px 4px 10px 4px;
+    margin: 0 3.5% 14px 0;
+  }
+  .tile:nth-child(3n) {
+    margin-right: 0;
+  }
+  .tile .icon {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 8px auto;
+  }
+  .tile .icon svg {
+    display: block;
+    width: 40px;
+    height: 40px;
+  }
+  .tile .label {
+    display: block;
+    font-size: 16px;
+    line-height: 1.15;
+    margin-bottom: 4px;
+  }
+  .tile .state {
+    display: block;
+    font-size: 12px;
+    color: #555555;
+  }
+  .tile.on {
+    background: #000000;
+    color: #ffffff;
+  }
+  .tile.on .state {
+    color: #cccccc;
+  }
+  .refresh {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    border: 2px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    font-size: 20px;
+    padding: 14px;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .spacer {
+    display: block;
+    width: 100%;
+    height: 46px;
+    margin-bottom: 14px;
+  }
+  .nav-link {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Home</h1>
+  <div id="status">Loading&#8230;</div>
+  <a class="nav-link" href="remote.html">Remote &#8594;</a>
+  <div class="spacer"></div>
+  <div class="section-title">Living Room</div>
+  <div id="group-living-room"></div>
+  <div class="section-title">Kitchen</div>
+  <div id="group-kitchen"></div>
+  <button class="refresh" onclick="refreshAll()">Refresh</button>
+</div>
+<script type="text/javascript">
+  /* ============================================================
+     CONFIG - edit these three values for your setup
+     ============================================================ */
+  var HA_TOKEN = "Add Long-lived access token HERE";
+  // Leave HA_URL empty ("") if this file is hosted inside Home Assistant's
+  // own /config/www folder (served at http://YOUR-HA:8123/local/kindle-dashboard.html) -
+  // same-origin requests need no URL and no CORS setup.
+  // If you're hosting it elsewhere, set the full base URL instead, e.g.
+  // "http://192.168.0.118:8123"
+  var HA_URL = "";
+  // Set to 0 to disable background polling entirely (max battery savings,
+  // manual Refresh button only). Otherwise, refresh interval in milliseconds
+  // while this page stays open (does nothing once the Kindle sleeps).
+  var AUTO_REFRESH_MS = 30000;
+  /* ============================================================
+     Entities - grouped by the section they appear under above
+     ============================================================ */
+  var GROUPS = {
+    "group-living-room": [
+        { id: "light.left_wall_light", name: "Left Wall" },
+        { id: "light.living_room_main_light", name: "Main Light" },
+        { id: "light.right_wall_light", name: "Right Wall" },
+        { id: "light.cinema_mode", name: "Cinema Mode" },
+        { id: "cover.living_room_blinds", name: "Blinds" },
+        { id: "switch.christmas_lights", name: "TV", icon: "tv" }
+    ],
+    "group-kitchen": [
+      { id: "light.main_kitchen_lights", name: "Main Kitchen Lights" },
+      { id: "vacuum.vacuum", name: "Vacuum" }
+    ]
+  };
+  /* ============================================================
+     Per-domain behavior: icon to show, which raw state counts as
+     "on" (for the tile's inverted look), what label to show for
+     each possible state, and - for domains that don't support a
+     generic toggle service (like vacuum) - explicit on/off services
+     to call instead. Add a domain here if you add entities of a
+     type not covered below (fan, lock, etc.) - otherwise unknown
+     domains fall back to "default".
+     ============================================================ */
+  var DOMAIN_META = {
+    light: {
+      icon: "light",
+      onValue: "on",
+      labels: { on: "ON", off: "OFF" }
+    },
+    switch: {
+      icon: "switch",
+      onValue: "on",
+      labels: { on: "ON", off: "OFF" }
+    },
+    cover: {
+      icon: "cover",
+      onValue: "open",
+      labels: { open: "OPEN", closed: "CLOSED", opening: "OPENING", closing: "CLOSING" }
+    },
+    vacuum: {
+      icon: "vacuum",
+      onValue: "cleaning",
+      labels: { cleaning: "CLEANING", docked: "DOCKED", paused: "PAUSED", idle: "IDLE", returning: "RETURNING", error: "ERROR" },
+      onService: "start",
+      offService: "return_to_base"
+    },
+    "default": {
+      icon: "default",
+      onValue: "on",
+      labels: { on: "ON", off: "OFF" }
+    }
+  };
+  /* ============================================================
+     Icons - one per domain, drawn as plain-stroke SVG so they render
+     reliably on old e-ink browsers (no icon fonts/external assets).
+     Uses currentColor so they flip white-on-black automatically when
+     a tile is toggled to the "on" state, same as the text does.
+     ============================================================ */
+  var ICONS = {
+    light: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+           '<path d="M9 18h6"/><path d="M10 22h4"/>' +
+           '<path d="M12 2a7 7 0 0 0-4 12.7c.5.4.9 1 1 1.7l.1.6h6l.1-.6c.1-.7.5-1.3 1-1.7A7 7 0 0 0 12 2z"/>' +
+           '</svg>',
+    switch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<rect x="2" y="8" width="20" height="8" rx="4"/><circle cx="8" cy="12" r="3"/>' +
+            '</svg>',
+    cover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+           '<rect x="3" y="3" width="18" height="18" rx="1"/>' +
+           '<line x1="3" y1="8" x2="21" y2="8"/>' +
+           '<line x1="3" y1="13" x2="21" y2="13"/>' +
+           '<line x1="12" y1="18" x2="12" y2="21"/>' +
+           '</svg>',
+    vacuum: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/>' +
+            '</svg>',
+    tv: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="2" y="4" width="20" height="13" rx="1"/>' +
+        '<line x1="8" y1="21" x2="16" y2="21"/>' +
+        '<line x1="12" y1="17" x2="12" y2="21"/>' +
+        '</svg>',
+    "default": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+               '<circle cx="12" cy="12" r="8"/>' +
+               '</svg>'
+  };
+  /* ============================================================
+     No need to edit below this line
+     ============================================================ */
+  function apiRequest(method, path, body, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(method, HA_URL + path, true);
+    xhr.setRequestHeader("Authorization", "Bearer " + HA_TOKEN);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4) {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          var data = null;
+          try { data = JSON.parse(xhr.responseText); } catch (e) {}
+          callback(true, data);
+        } else {
+          callback(false, null);
+        }
+      }
+    };
+    if (body) {
+      xhr.send(JSON.stringify(body));
+    } else {
+      xhr.send();
+    }
+  }
+  function domainOf(entityId) {
+    return entityId.split(".")[0];
+  }
+  function metaFor(domain) {
+    return DOMAIN_META[domain] || DOMAIN_META["default"];
+  }
+  function renderGroup(containerId, entities) {
+    var container = document.getElementById(containerId);
+    container.innerHTML = "";
+    for (var i = 0; i < entities.length; i++) {
+      var ent = entities[i];
+      var meta = metaFor(domainOf(ent.id));
+      var btn = document.createElement("button");
+      btn.className = "tile";
+      btn.id = "btn-" + ent.id;
+      btn.setAttribute("data-entity", ent.id);
+      var iconKey = ent.icon || meta.icon;
+      var iconSpan = document.createElement("span");
+      iconSpan.className = "icon";
+      iconSpan.innerHTML = ICONS[iconKey] || ICONS["default"];
+      btn.appendChild(iconSpan);
+      var labelSpan = document.createElement("span");
+      labelSpan.className = "label";
+      labelSpan.appendChild(document.createTextNode(ent.name));
+      btn.appendChild(labelSpan);
+      var stateSpan = document.createElement("span");
+      stateSpan.className = "state";
+      stateSpan.id = "state-" + ent.id;
+      stateSpan.innerHTML = "&#8230;";
+      btn.appendChild(stateSpan);
+      btn.onclick = (function (entityId) {
+        return function () { toggleEntity(entityId); };
+      })(ent.id);
+      container.appendChild(btn);
+    }
+  }
+  function setButtonState(entityId, text, isOn) {
+    var btn = document.getElementById("btn-" + entityId);
+    var stateEl = document.getElementById("state-" + entityId);
+    if (!btn || !stateEl) return;
+    if (isOn === true) {
+      btn.className = "tile on";
+    } else if (isOn === false) {
+      btn.className = "tile";
+    }
+    stateEl.innerHTML = text;
+  }
+  function isButtonOn(entityId) {
+    var btn = document.getElementById("btn-" + entityId);
+    if (!btn) return false;
+    return (" " + btn.className + " ").indexOf(" on ") !== -1;
+  }
+  function updateButton(entityId, state) {
+    var meta = metaFor(domainOf(entityId));
+    var label = (meta.labels && meta.labels[state]) ? meta.labels[state] : state;
+    var isOn = (state === meta.onValue);
+    setButtonState(entityId, label, isOn);
+  }
+  function fetchState(entityId) {
+    apiRequest("GET", "/api/states/" + entityId, null, function (ok, data) {
+      if (ok && data) {
+        updateButton(entityId, data.state);
+      } else {
+        setButtonState(entityId, "?", null);
+      }
+    });
+  }
+  function toggleEntity(entityId) {
+    var domain = domainOf(entityId);
+    var meta = metaFor(domain);
+    var service = "toggle";
+    if (meta.onService && meta.offService) {
+      service = isButtonOn(entityId) ? meta.offService : meta.onService;
+    }
+    setButtonState(entityId, "&#8230;", null);
+    apiRequest("POST", "/api/services/" + domain + "/" + service, { entity_id: entityId }, function () {
+      // give the device a moment to report its new state, then refresh
+      setTimeout(function () { fetchState(entityId); }, 800);
+    });
+  }
+  function refreshAll() {
+    document.getElementById("status").innerHTML = "Refreshing&#8230;";
+    var allIds = [];
+    for (var key in GROUPS) {
+      if (!GROUPS.hasOwnProperty(key)) continue;
+      for (var j = 0; j < GROUPS[key].length; j++) {
+        allIds.push(GROUPS[key][j].id);
+      }
+    }
+    for (var i = 0; i < allIds.length; i++) {
+      fetchState(allIds[i]);
+    }
+    var now = new Date();
+    document.getElementById("status").innerHTML =
+      "Updated " + now.getHours() + ":" + (now.getMinutes() < 10 ? "0" : "") + now.getMinutes();
+  }
+  function init() {
+    for (var key in GROUPS) {
+      if (!GROUPS.hasOwnProperty(key)) continue;
+      renderGroup(key, GROUPS[key]);
+    }
+    refreshAll();
+    if (AUTO_REFRESH_MS > 0) {
+      setInterval(refreshAll, AUTO_REFRESH_MS);
+    }
+  }
+  init();
+</script>
+</body>
+</html>
