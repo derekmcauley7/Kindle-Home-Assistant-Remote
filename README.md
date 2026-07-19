@@ -1,12 +1,12 @@
 # Kindle Home Assistant Remote
 
-Turn a jailbroken 6th-gen Kindle Paperwhite into a low-power, touch-interactive
+Turn a 6th-gen Kindle Paperwhite into a low-power, touch-interactive
 Home Assistant control panel. No proxy server, no Docker, no persistent
 connection — just one static HTML file served directly from Home Assistant.
 
 ## Prerequisites
 
-- Kindle Paperwhite 2 (6th gen), jailbroken
+- Kindle Paperwhite 2 (6th gen)
 - Home Assistant instance on the same local network
 - `kindle-dashboard.html` (the dashboard file)
 
